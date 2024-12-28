@@ -1,6 +1,5 @@
 #include <stdlib.h>
 
-void free(void *p)
-{
-	__libc_free(p);
-}
+#include "mallocng/glue.h"
+
+void free(void *p) { __libc_free(p); }

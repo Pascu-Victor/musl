@@ -1,1 +1,1 @@
-#include "crt1.c"
+// #include "crt1.c"
