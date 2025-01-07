@@ -1,0 +1,198 @@
+cmake_minimum_required(VERSION 3.13)
+
+set(LLVM_PATH ${CMAKE_SOURCE_DIR}../../../../tools/llvm-build/bin)
+set(CMAKE_C_COMPILER "${LLVM_PATH}/clang" CACHE INTERNAL "Path to clang")
+set(CMAKE_LINKER_TYPE "LLD")
+set(CMAKE_ASSEMBLER "${LLVM_PATH}/clang" CACHE INTERNAL "Path to clang")
+
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -nostdlib -nostartfiles -nodefaultlibs")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c23 -fdiagnostics-color=always -Os -pipe -ffreestanding -nostdinc -D_XOPEN_SOURCE=700")
+
+project(musl C ASM)
+
+# Configuration options
+set(MALLOC_DIR "mallocng" CACHE STRING "Malloc implementation directory")
+set(ARCH "x86_64" CACHE STRING "Target architecture")
+
+# Compiler settings
+set(CMAKE_C_STANDARD 23)
+add_compile_options(
+    -Os
+    -pipe
+    -ffreestanding
+    -nostdinc
+    -D_XOPEN_SOURCE=700
+)
+
+# Include directories
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}
+    ${CMAKE_CURRENT_SOURCE_DIR}/arch/generic
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/internal
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Generate required headers
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/bits)
+
+# Main library sources
+file(GLOB MUSL_SOURCES
+    "src/*/*.c"
+    "src/malloc/${MALLOC_DIR}/*.c"
+)
+
+# Architecture specific sources
+file(GLOB ARCH_SOURCES
+    "src/*/${ARCH}/*.c"
+    "src/*/${ARCH}/*.s"
+)
+
+# Create main libc
+add_library(c SHARED ${MUSL_SOURCES} ${ARCH_SOURCES})
+add_library(c_static STATIC ${MUSL_SOURCES} ${ARCH_SOURCES})
+set_target_properties(c PROPERTIES OUTPUT_NAME "c")
+set_target_properties(c_static PROPERTIES OUTPUT_NAME "c")
+
+# # LD.SO
+# file (GLOB LDSO_SOURCES
+#     "ldso/*.c"
+#     "ldso/${ARCH}/*.c"
+#     "ldso/${ARCH}/*.s"
+# )
+
+# add_library(ldso SHARED ${LDSO_SOURCES})
+# add_library(ldso_static STATIC ${LDSO_SOURCES})
+# set_target_properties(ldso PROPERTIES OUTPUT_NAME "ldso")
+# set_target_properties(ldso_static PROPERTIES OUTPUT_NAME "ldso")
+
+# Create CRT objects with specific flags
+add_library(crt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/crt1.c")
+add_library(crti OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/${ARCH}/crti.s")
+add_library(crtn OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/${ARCH}/crtn.s")
+add_library(Scrt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/Scrt1.c")
+add_library(rcrt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/rcrt1.c")
+
+# Set specific compile flags for CRT objects
+# target_compile_definitions(crt1 PRIVATE CRT)
+# target_compile_definitions(Scrt1 PRIVATE CRT)
+# target_compile_definitions(rcrt1 PRIVATE CRT)
+
+# Add PIC flags for Scrt1 and rcrt1
+set_target_properties(Scrt1 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(rcrt1 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Add dependencies for crt arch header
+set(CRT_ARCH_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/crt_arch.h")
+if(EXISTS ${CRT_ARCH_HEADER})
+    set_source_files_properties(${CRT_SOURCES} PROPERTIES
+        OBJECT_DEPENDS ${CRT_ARCH_HEADER})
+endif()
+
+# Special handling for rcrt1
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ldso/dlstart.c")
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/crt/${ARCH}/rcrt1.s
+        PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ldso/dlstart.c"
+    )
+endif()
+
+# Disable SSP for specific objects
+target_compile_options(crt1 PRIVATE -fno-stack-protector)
+target_compile_options(Scrt1 PRIVATE -fno-stack-protector)
+target_compile_options(rcrt1 PRIVATE -fno-stack-protector)
+
+set(MUSL_PREFIX "${CMAKE_BINARY_DIR}/musl")
+
+install(TARGETS c c_static
+    RUNTIME DESTINATION ${MUSL_PREFIX}/lib
+    LIBRARY DESTINATION ${MUSL_PREFIX}/lib
+    ARCHIVE DESTINATION ${MUSL_PREFIX}/lib
+)
+
+install(TARGETS crt1 Scrt1 rcrt1
+    OBJECTS DESTINATION ${MUSL_PREFIX}/lib
+)
+# install(TARGETS dlstart DESTINATION ${MUSL_PREFIX}/lib)
+# install(TARGETS dynlink DESTINATION ${MUSL_PREFIX}/lib)
+
+
+# Install headers
+install(DIRECTORY include/ DESTINATION ${MUSL_PREFIX}/include
+    FILES_MATCHING PATTERN "*.h"
+)
+install(DIRECTORY arch/${ARCH}/bits/ DESTINATION ${MUSL_PREFIX}/include/bits
+    FILES_MATCHING PATTERN "*.h"
+)
+
+
+# Note: The following complex header generation might need the original script
+# for alltypes.h and syscall.h. Keeping original commands in comments:
+#
+# Generate alltypes.h
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/include/bits/alltypes.h
+    COMMAND sed -f ${CMAKE_CURRENT_SOURCE_DIR}/tools/mkalltypes.sed
+            ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/bits/alltypes.h.in
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/alltypes.h.in
+            > ${CMAKE_CURRENT_BINARY_DIR}/include/bits/alltypes.h
+    DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/bits/alltypes.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/alltypes.h.in
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/mkalltypes.sed
+    COMMENT "Generating alltypes.h"
+)
+
+
+# Generate syscall.h
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/include/bits/syscall.h
+    COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/bits/syscall.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/bits/syscall.h
+    COMMAND sed -n -e s/__NR_/SYS_/p < ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/bits/syscall.h.in >> ${CMAKE_CURRENT_BINARY_DIR}/include/bits/syscall.h
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/arch/${ARCH}/bits/syscall.h.in
+    COMMENT "Generating syscall.h"
+)
+
+# Generate version.h
+
+execute_process(
+    COMMAND bash -c "if [ -d .git ] && command -v git >/dev/null 2>&1; then \
+        git describe --tags --match 'v[0-9]*' 2>/dev/null | sed -e 's/^v//' -e 's/-/-git-/'; \
+    elif [ -d .git ]; then \
+        sed 's/$/-git/' < VERSION; \
+    else \
+        cat VERSION; \
+    fi"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE MUSL_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/src/internal/version.h "#define VERSION \"${MUSL_VERSION}\"\n")
+
+# Add custom targets
+
+add_custom_target(generate_alltypes DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/include/bits/alltypes.h)
+add_custom_target(generate_syscall DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/include/bits/syscall.h)
+add_dependencies(c generate_alltypes)
+add_dependencies(c_static generate_alltypes)
+add_dependencies(c generate_syscall)
+add_dependencies(c_static generate_syscall)
+
+include_directories(
+    ${CMAKE_CURRENT_BINARY_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/src/internal
+)
+
+
+# Note: The following parts might need special handling and are preserved as comments:
+# 1. The musl-gcc wrapper script generation
+# 2. The complex assembly handling with add-cfi
+# 3. Special CFLAGS for specific files
+# 4. The dynamic linker setup
+#
+# Original commands preserved for reference:
+#
+# lib/musl-gcc.specs: $(srcdir)/tools/musl-gcc.specs.sh config.mak
+#   sh $< "$(includedir)" "$(libdir)" "$(LDSO_PATHNAME)" > $@

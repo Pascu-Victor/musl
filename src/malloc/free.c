@@ -2,4 +2,4 @@
 
 #include "mallocng/glue.h"
 
-void free(void *p) { __libc_free(p); }
+weak void free(void *p) { __libc_free(p); }

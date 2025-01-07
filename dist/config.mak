@@ -3,16 +3,16 @@
 #
 
 # Target CPU architecture. Supported values: i386, x86_64
-ARCH = i386
+ARCH = x86_64
 
 # Installation prefix. DO NOT use /, /usr, or /usr/local !
-prefix = /usr/local/musl
+prefix = ./musl-build
 
 # Installation prefix for musl-gcc compiler wrapper.
-exec_prefix = /usr/local
+exec_prefix = ./cats/usr/local
 
 # Location for the dynamic linker ld-musl-$(ARCH).so.1
-syslibdir = /lib
+syslibdir = ./cats/lib
 
 # Uncomment if you want to build i386 musl on a 64-bit host
 #CFLAGS += -m32
@@ -33,4 +33,4 @@ syslibdir = /lib
 #CFLAGS += -Werror -Wall -Wpointer-arith -Wcast-align -Wno-parentheses -Wno-char-subscripts -Wno-uninitialized -Wno-sequence-point -Wno-missing-braces -Wno-unused-value -Wno-overflow -Wno-int-to-pointer-cast
 
 # Uncomment if you want to disable building the shared library.
-#SHARED_LIBS = 
+#SHARED_LIBS =

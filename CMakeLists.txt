@@ -112,6 +112,7 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/src/internal/version.h "#define VERSION \
 #crt objects
 
 # Create crt objects with dependencies
+# Create crt objects and set their output directory
 add_library(crt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/crt1.c")
 add_library(Scrt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/crt/Scrt1.c")
 add_library(rcrt1 OBJECT "${CMAKE_CURRENT_SOURCE_DIR}/ldso/dlstart.c")
@@ -139,8 +140,15 @@ set_target_properties(rcrt1 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Install rules
 install(TARGETS musl_static DESTINATION lib)
+set_target_properties(musl_static PROPERTIES OUTPUT_NAME "c")
 install(TARGETS musl_shared DESTINATION lib)
+set_target_properties(musl_shared PROPERTIES OUTPUT_NAME "c")
 install(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
+install(TARGETS crt1 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS Scrt1 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS rcrt1 DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS dlstart DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+install(TARGETS dynlink DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 foreach(ASM_SOURCE ${ARCH_ASM_SRCS})
     set_source_files_properties(${ASM_SOURCE} PROPERTIES COMPILE_FLAGS "-Wno-unused-command-line-argument")

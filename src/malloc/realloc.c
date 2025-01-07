@@ -2,4 +2,4 @@
 
 #include "mallocng/glue.h"
 
-void *realloc(void *p, size_t n) { return __libc_realloc(p, n); }
+weak void *realloc(void *p, size_t n) { return __libc_realloc(p, n); }

@@ -8,3 +8,5 @@ lib/musl-gcc.specs
 /obj/
 
 build/
+
+musl-build

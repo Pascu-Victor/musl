@@ -9,9 +9,9 @@
 #elif FLT_EVAL_METHOD == 2
 #define EPS LDBL_EPSILON
 #endif
-static const float_t toint = 1 / EPS;
 
 #ifndef __x86_64__
+static const float_t toint = 1 / EPS;
 
 float rintf(float x) {
     union {

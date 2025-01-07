@@ -11,7 +11,6 @@ long double nearbyintl(long double x)
 long double nearbyintl(long double x)
 {
 #ifdef FE_INEXACT
-	#pragma STDC FENV_ACCESS ON
 	int e;
 
 	e = fetestexcept(FE_INEXACT);
